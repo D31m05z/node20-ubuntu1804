@@ -22,53 +22,34 @@ This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 ```
 
-
+**Build Environment:**
 ```
+git submodule update --init
+cd node
 docker pull --platform linux/amd64 ubuntu:18.04
 docker run --platform linux/amd64 -it --rm -v $PWD:$PWD -w $PWD ubuntu:18.04 bash
 ```
 
 **Build Script:**
 ```bash
-# Update the package list and install prerequisites
 apt-get update
 apt-get install -y software-properties-common
-
-# Add the repository for GCC 10
 add-apt-repository -y ppa:ubuntu-toolchain-r/test
 apt-get update
-
-# Install GCC 10 and G++ 10
 apt install -y gcc-10 g++-10
-
-# Remove previous alternatives
 update-alternatives --remove-all gcc
 update-alternatives --remove-all g++
-
-# Define the new compiler alternatives
 update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 30
 update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 30
 update-alternatives --install /usr/bin/cc cc /usr/bin/gcc 30
 update-alternatives --set cc /usr/bin/gcc
 update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++ 30
 update-alternatives --set c++ /usr/bin/g++
-
-# Confirm and update alternatives (optional)
 update-alternatives --config gcc
 update-alternatives --config g++
-
-# Install build dependencies
 apt-get install -y build-essential python3-distutils git
-
-# Clone the Node.js repository and checkout the desired version
-git clone --depth 1 --branch v20.19.1 https://github.com/nodejs/node
-cd node
-
-# Configure and build Node.js
 ./configure
-make -j$(nproc) # Use all available CPU cores
-
-# Optionally, install Node.js
+make -j$(nproc)
 make install
 ```
 
