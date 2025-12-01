@@ -25,9 +25,9 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 **Build Environment:**
 ```
 git submodule update --init
+docker buildx build --platform linux/amd64 -t node-builder .
 cd node
-docker pull --platform linux/amd64 ubuntu:18.04
-docker run --platform linux/amd64 -it --rm -v $PWD:$PWD -w $PWD ubuntu:18.04 bash
+docker run --platform linux/amd64 -it --rm -v $PWD:$PWD -w $PWD node-builder bash
 ```
 
 **Build Script:**
