@@ -1,0 +1,112 @@
+name: 🛠️ Build custom Node.js for Ubuntu 18.04
+
+# Builds glibc-2.27-compatible Node.js 20 & 24 binaries that run on bionic
+# (and on GitHub Actions runners using an ubuntu:18.04 container) without the
+#   "GLIBC_2.28 not found" / "GLIBCXX_3.4.x not found" errors.
+
+on:
+  workflow_dispatch:
+    inputs:
+      node20_version:
+        description: "Node 20 release tag (e.g. v20.19.0)"
+        required: true
+        default: "v20.19.0"
+      node24_version:
+        description: "Node 24 release tag (e.g. v24.11.1)"
+        required: true
+        default: "v24.11.1"
+      publish_release:
+        description: "Create a GitHub Release with the artifacts"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"   # tagging the repo publishes a release with both binaries
+
+permissions:
+  contents: write   # needed to create releases / upload assets
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: node20
+            gcc: "10"
+          - label: node24
+            gcc: "13"
+    name: build-${{ matrix.label }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Resolve Node version for this matrix entry
+        id: ver
+        run: |
+          if [ "${{ matrix.label }}" = "node20" ]; then
+            echo "node_version=${{ github.event.inputs.node20_version || 'v20.19.0' }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "node_version=${{ github.event.inputs.node24_version || 'v24.11.1' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build builder image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: node-bionic-builder:${{ matrix.label }}
+          build-args: |
+            NODE_VERSION=${{ steps.ver.outputs.node_version }}
+            GCC_VERSION=${{ matrix.gcc }}
+
+      - name: Extract artifacts from image
+        run: |
+          mkdir -p dist
+          cid="$(docker create node-bionic-builder:${{ matrix.label }})"
+          docker cp "${cid}:/dist/." dist/
+          docker rm -f "${cid}"
+          # name the standalone binary by target so release assets don't clash
+          mv dist/node "dist/node-${{ matrix.label }}-linux-x64"
+          ls -la dist
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.label }}-linux-x64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish_release == 'true'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          ls -la release
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('manual-{0}', github.run_number) }}
+          name: Custom Node.js (Ubuntu 18.04 / glibc 2.27)
+          generate_release_notes: true
+          files: release/*
